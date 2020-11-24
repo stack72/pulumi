@@ -161,11 +161,12 @@ func (pkg *pkgContext) tokenToType(tok string) string {
 	// If the package containing the type's token already has a resource with the
 	// same name, add a `Type` suffix.
 	modPkg, ok := pkg.packages[mod]
-	contract.Assert(ok)
 
 	name = Title(name)
-	if modPkg.names.has(name) {
-		name += "Type"
+	if ok {
+		if modPkg.names.has(name) {
+			name += "Type"
+		}
 	}
 
 	if mod == pkg.mod {
@@ -195,11 +196,11 @@ func (pkg *pkgContext) tokenToResource(tok string) string {
 
 	name = Title(name)
 
-	if mod == pkg.mod {
-		return name
-	}
 	if mod == "" {
 		mod = components[0]
+	}
+	if mod == pkg.mod {
+		return name
 	}
 	return strings.Replace(mod, "/", "", -1) + "." + name
 }
@@ -227,9 +228,9 @@ func (pkg *pkgContext) plainType(t schema.Type, optional bool) string {
 	case *schema.MapType:
 		return "map[string]" + pkg.plainType(t.ElementType, false)
 	case *schema.ObjectType:
-		typ = pkg.tokenToType(t.Token)
+		typ = pkg.resolveObjectType(t)
 	case *schema.ResourceType:
-		typ = pkg.tokenToResource(t.Token)
+		typ = pkg.resolveResourceType(t)
 	case *schema.TokenType:
 		// Use the underlying type for now.
 		if t.UnderlyingType != nil {
@@ -288,8 +289,7 @@ func (pkg *pkgContext) inputType(t schema.Type, optional bool) string {
 	case *schema.ObjectType:
 		typ = pkg.tokenToType(t.Token)
 	case *schema.ResourceType:
-		typ = pkg.tokenToResource(t.Token)
-		return typ + "Input"
+		return pkg.resolveResourceType(t) + "Input"
 	case *schema.TokenType:
 		// Use the underlying type for now.
 		if t.UnderlyingType != nil {
@@ -333,6 +333,48 @@ func (pkg *pkgContext) inputType(t schema.Type, optional bool) string {
 	return typ + "Input"
 }
 
+// resolveResourceType resolves resource references in properties while
+// taking into account potential external resources. Returned type is
+// always marked as required. Caller should check if the property is
+// optional and convert the type to a pointer if necessary.
+func (pkg *pkgContext) resolveResourceType(t *schema.ResourceType) string {
+	if t.Resource.Package != pkg.pkg {
+		extPkg := t.Resource.Package
+		var goInfo GoPackageInfo
+		if info, ok := extPkg.Language["go"].(GoPackageInfo); ok {
+			goInfo = info
+		}
+		extPkgCtx := &pkgContext{
+			pkg:              extPkg,
+			importBasePath:   goInfo.ImportBasePath,
+			pkgImportAliases: goInfo.PackageImportAliases,
+		}
+		return extPkgCtx.plainType(t, false)
+	}
+	return pkg.tokenToResource(t.Token)
+}
+
+// resolveObjectType resolves resource references in properties while
+// taking into account potential external resources. Returned type is
+// always marked as required. Caller should check if the property is
+// optional and convert the type to a pointer if necessary.
+func (pkg *pkgContext) resolveObjectType(t *schema.ObjectType) string {
+	if t.Package != pkg.pkg {
+		extPkg := t.Package
+		var goInfo GoPackageInfo
+		if info, ok := extPkg.Language["go"].(GoPackageInfo); ok {
+			goInfo = info
+		}
+		extPkgCtx := &pkgContext{
+			pkg:              extPkg,
+			importBasePath:   goInfo.ImportBasePath,
+			pkgImportAliases: goInfo.PackageImportAliases,
+		}
+		return extPkgCtx.plainType(t, false)
+	}
+	return pkg.tokenToType(t.Token)
+}
+
 func (pkg *pkgContext) outputType(t schema.Type, optional bool) string {
 	var typ string
 	switch t := t.(type) {
@@ -351,10 +393,9 @@ func (pkg *pkgContext) outputType(t schema.Type, optional bool) string {
 		}
 		return en + "MapOutput"
 	case *schema.ObjectType:
-		typ = pkg.tokenToType(t.Token)
+		typ = pkg.resolveObjectType(t)
 	case *schema.ResourceType:
-		typ = pkg.tokenToResource(t.Token)
-		return typ + "Output"
+		return pkg.resolveResourceType(t) + "Output"
 	case *schema.TokenType:
 		// Use the underlying type for now.
 		if t.UnderlyingType != nil {
@@ -521,7 +562,7 @@ func (pkg *pkgContext) genEnumType(w io.Writer, name string, enumType *schema.En
 	elementType := pkg.enumElementType(enumType.ElementType, false)
 	fmt.Fprintf(w, "type %s %s\n\n", name, elementType)
 
-	fmt.Fprintln(w, "const (")
+	_, _ = fmt.Fprintln(w, "const (")
 	for _, e := range enumType.Elements {
 		printCommentWithDeprecationMessage(w, e.Comment, e.DeprecationMessage, true)
 		var elementName = e.Name
@@ -1192,17 +1233,55 @@ func (pkg *pkgContext) getTypeImports(t schema.Type, recurse bool, imports strin
 	case *schema.MapType:
 		pkg.getTypeImports(t.ElementType, recurse, imports, seen)
 	case *schema.ObjectType:
+		if t.Package != pkg.pkg {
+			extPkg := t.Package
+			var goInfo GoPackageInfo
+			if info, ok := extPkg.Language["go"].(GoPackageInfo); ok {
+				goInfo = info
+			} else {
+				// tests don't include ImportBasePath
+				goInfo.ImportBasePath = extractImportBasePath(extPkg)
+			}
+			extPkgCtx := &pkgContext{
+				pkg:              extPkg,
+				importBasePath:   goInfo.ImportBasePath,
+				pkgImportAliases: goInfo.PackageImportAliases,
+			}
+			mod := extPkgCtx.tokenToPackage(t.Token)
+			imp := path.Join(goInfo.ImportBasePath, mod)
+			imports.add(imp)
+			break
+		}
 		mod := pkg.tokenToPackage(t.Token)
 		if mod != pkg.mod {
 			imports.add(path.Join(pkg.importBasePath, mod))
 		}
 
-		for _, p := range t.Properties {
-			if recurse {
+		if recurse {
+			for _, p := range t.Properties {
 				pkg.getTypeImports(p.Type, recurse, imports, seen)
 			}
 		}
 	case *schema.ResourceType:
+		if t.Resource.Package != pkg.pkg {
+			extPkg := t.Resource.Package
+			var goInfo GoPackageInfo
+			if info, ok := extPkg.Language["go"].(GoPackageInfo); ok {
+				goInfo = info
+			} else {
+				// tests don't include ImportBasePath
+				goInfo.ImportBasePath = extractImportBasePath(extPkg)
+			}
+			extPkgCtx := &pkgContext{
+				pkg:              extPkg,
+				importBasePath:   goInfo.ImportBasePath,
+				pkgImportAliases: goInfo.PackageImportAliases,
+			}
+			mod := extPkgCtx.tokenToPackage(t.Token)
+			imp := path.Join(goInfo.ImportBasePath, mod)
+			imports.add(imp)
+			break
+		}
 		mod := pkg.tokenToPackage(t.Token)
 		if mod != pkg.mod {
 			imports.add(path.Join(pkg.importBasePath, mod))
@@ -1212,6 +1291,15 @@ func (pkg *pkgContext) getTypeImports(t schema.Type, recurse bool, imports strin
 			pkg.getTypeImports(e, recurse, imports, seen)
 		}
 	}
+}
+
+func extractImportBasePath(extPkg *schema.Package) string {
+	version := extPkg.Version.Major
+	var vPath string
+	if version > 1 {
+		vPath = fmt.Sprintf("/v%d", version)
+	}
+	return fmt.Sprintf("github.com/pulumi/pulumi-%s/sdk%s/go/%s", extPkg.Name, vPath, extPkg.Name)
 }
 
 func (pkg *pkgContext) getImports(member interface{}, imports stringSet) {
@@ -1234,10 +1322,10 @@ func (pkg *pkgContext) getImports(member interface{}, imports stringSet) {
 		}
 	case *schema.Function:
 		if member.Inputs != nil {
-			pkg.getTypeImports(member.Inputs, false, imports, seen)
+			pkg.getTypeImports(member.Inputs, true, imports, seen)
 		}
 		if member.Outputs != nil {
-			pkg.getTypeImports(member.Outputs, false, imports, seen)
+			pkg.getTypeImports(member.Outputs, true, imports, seen)
 		}
 	case []*schema.Property:
 		for _, p := range member {

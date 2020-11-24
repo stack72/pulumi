@@ -77,9 +77,20 @@ func TestGeneratePackage(t *testing.T) {
 				filepath.Join("plant", "tree", "v1", "pulumiEnums.go"),
 			},
 		},
+		{
+			"External resource schema",
+			"external-resource-schema",
+			[]string{
+				filepath.Join("example", "pulumiTypes.go"),
+				filepath.Join("example", "argFunction.go"),
+				filepath.Join("example", "cat.go"),
+				filepath.Join("example", "provider.go"),
+				filepath.Join("example", "workload.go"),
+			},
+		},
 	}
 	testDir := filepath.Join("..", "internal", "test", "testdata")
-	for _, tt := range tests {
+	for _, tt := range tests[2:] {
 		t.Run(tt.name, func(t *testing.T) {
 			files, err := test.GeneratePackageFilesFromSchema(
 				filepath.Join(testDir, tt.schemaDir, "schema.json"),
