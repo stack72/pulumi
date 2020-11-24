@@ -287,7 +287,7 @@ func (pkg *pkgContext) inputType(t schema.Type, optional bool) string {
 		en := pkg.inputType(t.ElementType, false)
 		return strings.TrimSuffix(en, "Input") + "MapInput"
 	case *schema.ObjectType:
-		typ = pkg.tokenToType(t.Token)
+		typ = pkg.resolveObjectType(t)
 	case *schema.ResourceType:
 		return pkg.resolveResourceType(t) + "Input"
 	case *schema.TokenType:
@@ -338,7 +338,7 @@ func (pkg *pkgContext) inputType(t schema.Type, optional bool) string {
 // always marked as required. Caller should check if the property is
 // optional and convert the type to a pointer if necessary.
 func (pkg *pkgContext) resolveResourceType(t *schema.ResourceType) string {
-	if t.Resource.Package != pkg.pkg {
+	if t.Resource != nil && pkg.pkg != nil && t.Resource.Package != pkg.pkg {
 		extPkg := t.Resource.Package
 		var goInfo GoPackageInfo
 		if info, ok := extPkg.Language["go"].(GoPackageInfo); ok {
@@ -359,7 +359,7 @@ func (pkg *pkgContext) resolveResourceType(t *schema.ResourceType) string {
 // always marked as required. Caller should check if the property is
 // optional and convert the type to a pointer if necessary.
 func (pkg *pkgContext) resolveObjectType(t *schema.ObjectType) string {
-	if t.Package != pkg.pkg {
+	if t.Package != nil && pkg.pkg != nil && t.Package != pkg.pkg {
 		extPkg := t.Package
 		var goInfo GoPackageInfo
 		if info, ok := extPkg.Language["go"].(GoPackageInfo); ok {
@@ -1233,7 +1233,7 @@ func (pkg *pkgContext) getTypeImports(t schema.Type, recurse bool, imports strin
 	case *schema.MapType:
 		pkg.getTypeImports(t.ElementType, recurse, imports, seen)
 	case *schema.ObjectType:
-		if t.Package != pkg.pkg {
+		if t.Package != nil && pkg.pkg != nil && t.Package != pkg.pkg {
 			extPkg := t.Package
 			var goInfo GoPackageInfo
 			if info, ok := extPkg.Language["go"].(GoPackageInfo); ok {
@@ -1263,7 +1263,7 @@ func (pkg *pkgContext) getTypeImports(t schema.Type, recurse bool, imports strin
 			}
 		}
 	case *schema.ResourceType:
-		if t.Resource.Package != pkg.pkg {
+		if t.Resource != nil && pkg.pkg != nil && t.Resource.Package != pkg.pkg {
 			extPkg := t.Resource.Package
 			var goInfo GoPackageInfo
 			if info, ok := extPkg.Language["go"].(GoPackageInfo); ok {

@@ -90,7 +90,7 @@ func TestGeneratePackage(t *testing.T) {
 		},
 	}
 	testDir := filepath.Join("..", "internal", "test", "testdata")
-	for _, tt := range tests[2:] {
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			files, err := test.GeneratePackageFilesFromSchema(
 				filepath.Join(testDir, tt.schemaDir, "schema.json"),
