@@ -472,7 +472,7 @@ func unmarshalPropertyValue(v resource.PropertyValue) (interface{}, bool, error)
 				return nil, false, err
 			}
 			resourcePackage := resourcePackageV.(ResourcePackage)
-			resource, err = resourcePackage.ConstructProvider(resName, string(resType), nil, string(ref.URN))
+			resource, err = resourcePackage.ConstructProvider(resName, string(resType), string(ref.URN))
 		} else {
 			pkgName := resType.Package().String()
 			modName := resType.Module().String()
@@ -482,7 +482,7 @@ func unmarshalPropertyValue(v resource.PropertyValue) (interface{}, bool, error)
 				return nil, false, err
 			}
 			resourceModule := resourceModuleV.(ResourceModule)
-			resource, err = resourceModule.Construct(resName, string(resType), nil, string(ref.URN))
+			resource, err = resourceModule.Construct(resName, string(resType), string(ref.URN))
 		}
 		if err != nil {
 			return nil, false, err
@@ -680,7 +680,8 @@ func unmarshalOutput(v resource.PropertyValue, dest reflect.Value) (bool, error)
 }
 
 type ResourcePackage interface {
-	ConstructProvider(name, typ string, args map[string]interface{}, urn string) (ProviderResource, error)
+	ConstructProvider(name, typ string, urn string) (ProviderResource, error)
+	Version() string
 }
 
 var resourcePackages sync.Map // map[string]ResourcePackage
@@ -694,13 +695,14 @@ func RegisterResourcePackage(pkg string, resourcePackage ResourcePackage) {
 }
 
 type ResourceModule interface {
-	Construct(name, typ string, args map[string]interface{}, urn string) (Resource, error)
+	Construct(name, typ string, urn string) (Resource, error)
+	Version() string
 }
 
 var resourceModules sync.Map // map[string]ResourceModule
 
 func moduleKey(pkg, mod string) string {
-	return fmt.Sprintf("%s@%s", pkg, mod)
+	return fmt.Sprintf("%s:%s", pkg, mod)
 }
 
 // RegisterResourceModule register a resource module with the Pulumi runtime.
