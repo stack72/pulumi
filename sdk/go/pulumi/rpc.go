@@ -456,7 +456,7 @@ func unmarshalPropertyValue(v resource.PropertyValue) (interface{}, bool, error)
 	case v.IsResourceReference():
 		ref := v.ResourceReferenceValue()
 
-		resName := ref.URN.Name()
+		resName := ref.URN.Name().String()
 		resType := ref.URN.Type()
 
 		var resource Resource
@@ -464,24 +464,25 @@ func unmarshalPropertyValue(v resource.PropertyValue) (interface{}, bool, error)
 
 		isProvider := tokens.Token(resType).HasModuleMember() && resType.Module() == "pulumi:providers"
 		if isProvider {
-			pkgName := resType.Name()
-			resourcePackageV, ok := resourcePackages.Load(packageKey(string(pkgName), ref.PackageVersion))
+			pkgName := resType.Name().String()
+			resourcePackageV, ok := resourcePackages.Load(pkgName)
 			if !ok {
 				err := fmt.Errorf("unable to deserialize provider %v, no resource package is registered for %v",
 					ref.URN, pkgName)
 				return nil, false, err
 			}
 			resourcePackage := resourcePackageV.(ResourcePackage)
-			resource, err = resourcePackage.ConstructProvider(string(resName), string(resType), nil, string(ref.URN))
+			resource, err = resourcePackage.ConstructProvider(resName, string(resType), nil, string(ref.URN))
 		} else {
-			modName := resType.Module()
-			resourceModuleV, ok := resourceModules.Load(packageKey(string(modName), ref.PackageVersion))
+			pkgName := resType.Package().String()
+			modName := resType.Module().String()
+			resourceModuleV, ok := resourceModules.Load(moduleKey(pkgName, modName))
 			if !ok {
 				err := fmt.Errorf("unable to deserialize resource %v, no module is registered for %v", ref.URN, modName)
 				return nil, false, err
 			}
 			resourceModule := resourceModuleV.(ResourceModule)
-			resource, err = resourceModule.Construct(string(resName), string(resType), nil, string(ref.URN))
+			resource, err = resourceModule.Construct(resName, string(resType), nil, string(ref.URN))
 		}
 		if err != nil {
 			return nil, false, err
