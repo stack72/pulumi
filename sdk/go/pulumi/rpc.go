@@ -21,11 +21,10 @@ import (
 	"strings"
 	"sync"
 
-	"golang.org/x/net/context"
-
 	"github.com/pulumi/pulumi/sdk/v2/go/common/resource"
 	"github.com/pulumi/pulumi/sdk/v2/go/common/tokens"
 	"github.com/pulumi/pulumi/sdk/v2/go/common/util/contract"
+	"golang.org/x/net/context"
 )
 
 func mapStructTypes(from, to reflect.Type) func(reflect.Value, int) (reflect.StructField, reflect.Value) {
@@ -685,16 +684,11 @@ type ResourcePackage interface {
 
 var resourcePackages sync.Map // map[string]ResourcePackage
 
-func packageKey(name, version string) string {
-	return fmt.Sprintf("%s@%s", name, version)
-}
-
 // RegisterResourcePackage register a resource package with the Pulumi runtime.
-func RegisterResourcePackage(name, version string, pkg ResourcePackage) {
-	key := packageKey(name, version)
-	existing, hasExisting := resourcePackages.LoadOrStore(key, pkg)
+func RegisterResourcePackage(pkg string, resourcePackage ResourcePackage) {
+	existing, hasExisting := resourcePackages.LoadOrStore(pkg, resourcePackage)
 	if hasExisting {
-		panic(fmt.Errorf("a resource package for %v is already registered: %v", key, existing))
+		panic(fmt.Errorf("a resource package for %v is already registered: %v", pkg, existing))
 	}
 }
 
@@ -704,13 +698,13 @@ type ResourceModule interface {
 
 var resourceModules sync.Map // map[string]ResourceModule
 
-func moduleKey(name, version string) string {
-	return fmt.Sprintf("%s@%s", name, version)
+func moduleKey(pkg, mod string) string {
+	return fmt.Sprintf("%s@%s", pkg, mod)
 }
 
 // RegisterResourceModule register a resource module with the Pulumi runtime.
-func RegisterResourceModule(name, version string, module ResourceModule) {
-	key := moduleKey(name, version)
+func RegisterResourceModule(pkg, mod string, module ResourceModule) {
+	key := moduleKey(pkg, mod)
 	existing, hasExisting := resourceModules.LoadOrStore(key, module)
 	if hasExisting {
 		panic(fmt.Errorf("a resource module for %v is already registered: %v", key, existing))
