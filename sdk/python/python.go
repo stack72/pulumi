@@ -26,7 +26,10 @@ import (
 	"github.com/pkg/errors"
 )
 
-const windows = "windows"
+const (
+	windows       = "windows"
+	pythonShimCmd = "pulumi-python-shim.cmd"
+)
 
 // Command returns an *exec.Cmd for running `python`. If the `PULUMI_PYTHON_CMD` variable is set
 // it will be looked for on `PATH`, otherwise, `python3` and `python` will be looked for.
@@ -57,11 +60,14 @@ func Command(arg ...string) (*exec.Cmd, error) {
 			pythonPath, err = resolveWindowsExecutionAlias(pythonCmds)
 		}
 		if err != nil {
-			// TODO: Wrap error? The resulting user facing message isn't very pretty though.
 			return nil, errors.Errorf(
 				"locating any of %q on your PATH.  Have you installed Python 3.6 or greater?",
 				pythonCmds)
 		}
+	}
+
+	if needsPythonShim(pythonPath) {
+		return exec.Command(pythonShimCmd, append([]string{pythonPath}, arg...)...), nil
 	}
 	return exec.Command(pythonPath, arg...), nil
 }
@@ -102,16 +108,14 @@ func resolveWindowsExecutionAlias(pythonCmds []string) (string, error) {
 		for _, pythonCmd := range pythonCmds {
 			for _, ext := range exts {
 				path := filepath.Join(dir, pythonCmd+ext)
-				f, err := os.Lstat(path)
+				_, err := os.Lstat(path)
 				if err != nil && !os.IsNotExist(err) {
 					return "", errors.Wrap(err, "evaluating python execution alias")
 				}
 				if os.IsNotExist(err) {
 					continue
 				}
-				if f.Size() == 0 {
-					return path, nil
-				}
+				return path, nil
 			}
 		}
 	}
