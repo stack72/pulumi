@@ -67,7 +67,8 @@ func Command(arg ...string) (*exec.Cmd, error) {
 	}
 
 	if needsPythonShim(pythonPath) {
-		return exec.Command(pythonShimCmd, append([]string{pythonPath}, arg...)...), nil
+		shimedArgs := append([]string{pythonPath}, arg...)
+		return exec.Command(pythonShimCmd, shimedArgs...), nil
 	}
 	return exec.Command(pythonPath, arg...), nil
 }
